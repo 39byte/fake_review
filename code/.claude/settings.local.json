@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find . -maxdepth 4 -type d -name \"processed\" -o -maxdepth 4 -type d -name \"graphs\")",
+      "Bash(find . -maxdepth 5 \\\\\\( -name \"df_sampled.parquet\" -o -name \"train_mask.pt\" -o -name \"test_mask.pt\" \\\\\\))"
+    ]
+  }
+}

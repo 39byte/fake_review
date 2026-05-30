@@ -1,0 +1,12 @@
+https://itda-gnn-dashboard-dbpfa9uth9hdkmnqyjh4cm.streamlit.app/
+
+GitHub: https://github.com/ejongmin/itda-gnn-dashboard
+로컬 배포 폴더: C:\Users\john9\Desktop\itda_gnn_deploy
+
+수정 방법:
+  cd C:\Users\john9\Desktop\itda_gnn_deploy
+  (app.py 수정)
+  git add app.py
+  git commit -m "수정 내용"
+  git push
+  → Streamlit Cloud 자동 재배포 (1~2분)
