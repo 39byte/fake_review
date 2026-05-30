@@ -52,8 +52,16 @@ YelpZip 데이터셋(약 60만 건 이상의 식당 리뷰)에서 밀도 중심 
 - 원본 데이터 로드 및 라벨 변환 (`-1→1 사기`, `1→0 정상`)
 - **밀도 중심 샘플링**: 리뷰 수 상위 100개 식당(`prod_id`) 중심으로 30,000 노드 추출
   - 무작위 추출 금지 — 노드 간 연결성을 보존해야 GNN 학습 가능
-- 시간순 **80/20 분할** (train 80% / test 20%), `random_state=42`
-- 출력: `data/processed/df_sampled.parquet`
+- **분할 방식 선택 가능** (실행 시 인자 또는 환경변수로 지정):
+
+  | 방식 | 설명 | 실행 예시 |
+  |------|------|-----------|
+  | `chronological` (기본) | 시간순 80/20 — 과거 80% train / 최근 20% test (정보 누수 방지) | `python src/01_eda_sampling.py` |
+  | `stratified` | 층화 무작위 80/20 — train/test 스팸 비율 보존, `random_state=42` | `python src/01_eda_sampling.py --split stratified` |
+
+  - 환경변수로도 지정: `SPLIT_METHOD=stratified python src/01_eda_sampling.py`
+  - 두 방식 모두 노드 순서는 시간순으로 고정 → 그래프 구축(burst/시간 엣지) 일관성 보존
+- 출력: `data/processed/df_sampled.parquet` (`split` 컬럼에 train/test 기록)
 
 ### [2] 노드 피처 생성 (`02_features.py`)
 
@@ -176,8 +184,9 @@ code/
 # 환경 설치
 pip install -r requirements.txt
 
-# [1] EDA & 밀도 중심 샘플링
-python src/01_eda_sampling.py
+# [1] EDA & 밀도 중심 샘플링 (분할 방식 선택: --split chronological | stratified)
+python src/01_eda_sampling.py                    # 기본: chronological(시간순)
+# python src/01_eda_sampling.py --split stratified   # 층화 무작위 분할 사용 시
 
 # [2] 피처 생성 (SBERT 임베딩 + 마스크)
 python src/02_features.py
@@ -229,4 +238,5 @@ streamlit run dashboard/app.py
 
 - `seed=42` 전역 고정 (`config.py` → `set_seed(42)`)
 - CPU 환경에서 완전 재현 보장 (`torch.backends.cudnn.deterministic = True`)
-- 데이터 분할: 시간순 80/20, `random_state=42`
+- 데이터 분할: `chronological`(기본) 또는 `stratified` 선택 가능 — 둘 다 80/20, stratified는 `random_state=42`
+  - 보고서 기재 시 사용한 분할 방식을 명시 (대회 규정: 분할 코드·`random_state` 명시 필수)
