@@ -1,7 +1,13 @@
-﻿"""
+"""
 01_eda_sampling.py
 YelpZip EDA + 밀도 중심 서브그래프 샘플링 (30K 노드 목표)
-대회 규정: 10K~50K 노드, 무작위 추출 금지, 시간순 80/20 분할
+대회 규정: 10K~50K 노드, 무작위 추출 금지, 80/20 분할
+
+분할 방식 선택 (실행 시):
+  python src/01_eda_sampling.py                       # 기본: chronological(시간순)
+  python src/01_eda_sampling.py --split chronological # 시간순 80/20
+  python src/01_eda_sampling.py --split stratified    # 층화 무작위 80/20 (스팸 비율 보존)
+  SPLIT_METHOD=stratified python src/01_eda_sampling.py   # 환경변수로도 지정 가능
 """
 
 import pandas as pd
@@ -9,6 +15,7 @@ import numpy as np
 import torch
 import os
 import json
+import argparse
 from pathlib import Path
 from collections import Counter
 
@@ -18,6 +25,20 @@ PROC  = BASE / "data" / "processed"
 RES   = BASE / "results"
 PROC.mkdir(parents=True, exist_ok=True)
 RES.mkdir(parents=True, exist_ok=True)
+
+# ── 0. 분할 방식 선택 (CLI 인자 > 환경변수 > 기본값 chronological) ───────────────
+parser = argparse.ArgumentParser(description="YelpZip 샘플링 + 데이터 분할")
+parser.add_argument(
+    "--split",
+    choices=["chronological", "stratified"],
+    default=os.environ.get("SPLIT_METHOD", "chronological"),
+    help="데이터 분할 방식: chronological(시간순, 기본) 또는 stratified(층화 무작위)",
+)
+parser.add_argument("--seed", type=int, default=42, help="stratified 분할 random_state")
+args, _ = parser.parse_known_args()
+SPLIT_METHOD = args.split
+SPLIT_SEED   = args.seed
+print(f"[분할 방식] {SPLIT_METHOD}" + (f" (random_state={SPLIT_SEED})" if SPLIT_METHOD == "stratified" else ""))
 
 # ── 1. 로드 & 라벨 변환 ──────────────────────────────────────────────────────
 print("="*60)
@@ -142,20 +163,35 @@ print(f"스팸 비율 (목표: {target_spam_ratio:.3f}): {df_sample['label'].mea
 print(f"식당 수: {df_sample['prod_id'].nunique()}")
 print(f"유저 수: {df_sample['user_id'].nunique()}")
 
-# ── 5. 시간 분할 적용 ────────────────────────────────────────────────────────
+# ── 5. 데이터 분할 적용 (chronological / stratified 선택) ─────────────────────
 print("\n" + "="*60)
-print("[5] 시간순 분할 적용")
+print(f"[5] 데이터 분할 적용 (방식: {SPLIT_METHOD})")
 print("="*60)
 
+# 노드 순서는 두 방식 모두 시간순으로 고정 — 그래프 구축(burst/시간 엣지) 일관성 보존
 df_sample = df_sample.sort_values('date').reset_index(drop=True)
 n_sample = len(df_sample)
-train_cutoff = int(n_sample * 0.8)
 
-df_sample['split'] = 'test'
-df_sample.loc[:train_cutoff-1, 'split'] = 'train'
+if SPLIT_METHOD == "stratified":
+    # 층화 무작위 분할: 스팸 비율을 train/test에 동일하게 보존
+    from sklearn.model_selection import train_test_split
+    idx = np.arange(n_sample)
+    train_idx, _ = train_test_split(
+        idx, test_size=0.2, random_state=SPLIT_SEED,
+        stratify=df_sample['label'].values,
+    )
+    df_sample['split'] = 'test'
+    df_sample.loc[train_idx, 'split'] = 'train'
+    train_cut_date = None
+    print(f"Stratified Random Split (random_state={SPLIT_SEED}, 스팸 비율 보존)")
+else:
+    # 시간순 분할: 과거 80% train / 최근 20% test (정보 누수 방지)
+    train_cutoff = int(n_sample * 0.8)
+    df_sample['split'] = 'test'
+    df_sample.loc[:train_cutoff-1, 'split'] = 'train'
+    train_cut_date = df_sample.iloc[train_cutoff - 1]['date']
+    print(f"Chronological Split, 분할 기준일: {train_cut_date.date()}")
 
-train_cut_date = df_sample.iloc[train_cutoff - 1]['date']
-print(f"train/test 분할 기준일: {train_cut_date.date()}")
 print(f"train: {(df_sample['split']=='train').sum():,}건")
 print(f"test : {(df_sample['split']=='test').sum():,}건")
 print(f"train 스팸 비율: {df_sample[df_sample['split']=='train']['label'].mean():.3f}")
@@ -180,13 +216,13 @@ eda_summary = {
     "스팸_비율_샘플": round(float(df_sample['label'].mean()), 4),
     "식당_수": int(df_sample['prod_id'].nunique()),
     "유저_수": int(df_sample['user_id'].nunique()),
-    "train_비율": 0.8,
-    "test_비율": 0.2,
-    "train_cut_date": str(train_cut_date.date()),
+    "분할_방식": SPLIT_METHOD,
+    "분할_기준일": str(train_cut_date.date()) if train_cut_date is not None else "N/A (stratified)",
+    "분할_seed": SPLIT_SEED if SPLIT_METHOD == "stratified" else None,
+    "train_수": int((df_sample['split']=='train').sum()),
+    "test_수": int((df_sample['split']=='test').sum()),
     "날짜_범위_min": str(df_sample['date'].min().date()),
     "날짜_범위_max": str(df_sample['date'].max().date()),
-    "rating_분포": df_sample['rating'].value_counts().sort_index().to_dict(),
-    "random_state": "N/A — 시간순 정렬 분할 (재현 가능)",
 }
 
 with open(RES / "eda_summary.json", "w", encoding="utf-8") as f:
@@ -195,5 +231,6 @@ print(f"저장: {RES / 'eda_summary.json'}")
 
 print("\n" + "="*60)
 print("✅ EDA + 샘플링 완료")
+print(f"   분할 방식: {SPLIT_METHOD}  train={int((df_sample['split']=='train').sum()):,} test={int((df_sample['split']=='test').sum()):,}")
 print(f"   → 다음 단계: 02_features.py (SBERT 임베딩)")
 print("="*60)
