@@ -25,13 +25,24 @@ YelpZip 데이터셋(약 60만 건 이상의 식당 리뷰)에서 밀도 중심 
       ↓
 [4] 베이스라인 학습       04_train_baseline.py
       ↓
-[5] 핵심 모델 학습        09_boost.py  →  15_drag_bwgat.py
+[5] R-Sim-R 추가 부스트   09_boost.py
       ↓
-[6] 최종 앙상블           29_performance_boost.py  /  32_ensemble_4way.py
+[6] boost 그래프 확정     11_validate_boost.py        → hetero_graph_boost.pt
       ↓
-[7] XAI & 시각화          12_xai_attribution.py  →  13_fraud_network_viz.py
+[7] TVF 그래프 생성       14_new_hypotheses.py        → hetero_graph_tvf.pt
       ↓
-[8] 대시보드              dashboard/app.py
+[8] 핵심 모델 학습        15_drag_bwgat.py
+      ↓
+[9] 공정 비교 실험        20_fair_comparison.py       → DRAGWave_400ep_best.pt
+      ↓
+[10] NoRSR / TVF 확장     27_future_directions.py    → DRAGWave_NoRSR_best.pt
+                                                         DRAGWave_TVF_400ep_best.pt
+      ↓
+[11] 최종 앙상블          29_performance_boost.py  /  32_ensemble_4way.py
+      ↓
+[12] XAI & 시각화         12_xai_attribution.py  →  13_fraud_network_viz.py
+      ↓
+[13] 대시보드             dashboard/app.py
 ```
 
 ---
@@ -76,18 +87,28 @@ YelpZip 데이터셋(약 60만 건 이상의 식당 리뷰)에서 밀도 중심 
 - 손실함수: Focal Loss (γ=2.0, α=0.75, 스팸 비율 13.2% 반영)
 - 옵티마이저: AdamW (lr=5e-4, weight_decay=1e-5), Cosine Annealing LR
 
-### [5] 핵심 모델 학습
-
-#### R-Sim-R 추가 + Warm Restart (`09_boost.py`)
-- 5번째 커스텀 엣지 R-Sim-R을 그래프에 추가
+### [5] R-Sim-R 추가 + Warm Restart (`09_boost.py`)
+- 5번째 커스텀 엣지 R-Sim-R을 `hetero_graph.pt`에 추가 후 덮어씀
 - 전체 모델 400 epoch Warm Restart 재학습 (LR=2e-4)
 
-#### DRAG / BWGAT / DRAGWave (`15_drag_bwgat.py`) — 핵심 모델
+### [6] Boost 그래프 확정 (`11_validate_boost.py`)
+- `hetero_graph.pt`(5종 엣지)를 검증 후 **`hetero_graph_boost.pt`** 로 별도 저장
+- `HeteroBWGNN_boost_best.pt` 생성 — 이후 앙상블에서 사용
+- **이 파일이 없으면 15번 이후 스크립트 전체가 실행 불가**
+
+### [7] TVF 그래프 생성 (`14_new_hypotheses.py`)
+- 시간 속도 피처(TVF: Temporal Velocity Feature)를 노드 피처에 추가한 별도 그래프 생성
+- **`hetero_graph_tvf.pt`** 저장 — `27_future_directions.py`, `29`, `32`에서 사용
+
+### [8] 핵심 모델 학습 (`15_drag_bwgat.py`)
+- 입력: `hetero_graph_boost.pt`
+
+#### DRAG / BWGAT / DRAGWave — 핵심 모델
 - **DRAG** (Dynamic Relation-Attentive GNN, arXiv:2310.04171): 엣지 타입별 독립 임베딩 계산 후 노드마다 다른 동적 Attention으로 집계 → R-U-R 기여 20% vs R-S-R 0.2%의 비대칭 관계 자동 학습
 - **BWGAT** (Beta Wavelet GAT): BWGNN의 low-pass / high-pass 필터를 GAT Attention으로 가중합 → "사기 노드는 이웃과 다르다(high-pass)" 특성 반영
 - **DRAGWave**: DRAG의 관계 Attention + BWGAT의 주파수 필터를 결합한 최종 모델
 
-### [6] 실험 및 앙상블
+### [9] 실험 및 앙상블
 
 | 파일 | 내용 |
 |------|------|
@@ -103,7 +124,7 @@ YelpZip 데이터셋(약 60만 건 이상의 식당 리뷰)에서 밀도 중심 
 **4-way 인덕티브 앙상블 구성** (`32_ensemble_4way.py`):
 - DRAGWave_TVF_400ep (inductive gap 18.5%) + DRAGWave_NoRSR + HeteroBWGNN_boost + BWGAT → **PR-AUC 0.7748**
 
-### [7] XAI & 시각화
+### [10] XAI & 시각화
 
 - **엣지 기여도** (`12_xai_attribution.py`): 엣지 타입 하나씩 제거 시 fraud_prob 변화 측정
 - **Burst Δt 분포**: 사기 노드 주변 burst 엣지의 Δt가 정상 대비 짧음을 시각화
@@ -155,34 +176,43 @@ code/
 # 환경 설치
 pip install -r requirements.txt
 
-# [1] EDA & 샘플링
+# [1] EDA & 밀도 중심 샘플링
 python src/01_eda_sampling.py
 
-# [2] 피처 생성
+# [2] 피처 생성 (SBERT 임베딩 + 마스크)
 python src/02_features.py
 
-# [3] 헤테로 그래프 구축
+# [3] 헤테로 그래프 구축 (4종 엣지 → hetero_graph.pt)
 python src/03_graph_build.py
 
 # [4] 베이스라인 학습
 python src/04_train_baseline.py
 
-# [5] R-Sim-R 추가 + Warm Restart
+# [5] R-Sim-R 추가 + Warm Restart (hetero_graph.pt 덮어씀)
 python src/09_boost.py
 
-# [6] 핵심 모델 (DRAG / BWGAT / DRAGWave)
+# [6] Boost 그래프 확정 (→ hetero_graph_boost.pt, HeteroBWGNN_boost_best.pt)
+python src/11_validate_boost.py
+
+# [7] TVF 그래프 생성 (→ hetero_graph_tvf.pt)
+python src/14_new_hypotheses.py
+
+# [8] 핵심 모델 학습 (DRAG / BWGAT / DRAGWave)
 python src/15_drag_bwgat.py
 
-# [7] DRAGWave NoRSR / TVF 확장
+# [9] 공정 비교 실험 (→ DRAGWave_400ep_best.pt)
+python src/20_fair_comparison.py
+
+# [10] DRAGWave NoRSR / TVF 확장 (→ DRAGWave_NoRSR_best.pt, DRAGWave_TVF_400ep_best.pt)
 python src/27_future_directions.py
 
-# [8] 3-way Ensemble (Transductive 최종)
+# [11] 3-way Ensemble (Transductive 최종, PR-AUC 0.9419)
 python src/29_performance_boost.py
 
-# [9] 4-way Inductive Ensemble
+# [12] 4-way Inductive Ensemble (PR-AUC 0.7748)
 python src/32_ensemble_4way.py
 
-# [10] 대시보드 실행
+# [13] 대시보드 실행
 streamlit run dashboard/app.py
 ```
 
