@@ -136,6 +136,19 @@ y_test     = data_boost["review"].y[test_mask].numpy()
 feat_boost = data_boost["review"].x.shape[1]
 feat_tvf   = data_tvf["review"].x.shape[1]
 
+# Inductive graph: Train->Test edges fully removed (keep test-test only).
+# Performance is reported on the inductive (deployment) setting only.
+def mask_ind(data, mask):
+    d2 = copy.deepcopy(data)
+    for et, ei in data.edge_index_dict.items():
+        m = mask[ei[0]] & mask[ei[1]]
+        d2[et].edge_index = ei[:, m]
+        if hasattr(data[et], "edge_attr") and data[et].edge_attr is not None:
+            d2[et].edge_attr = data[et].edge_attr[m]
+    return d2
+
+data_boost_ind = mask_ind(data_boost, test_mask)
+
 # ── 실험 1: 새 앙상블 그리드 서치 ─────────────────────────────────────────────
 print("="*65)
 print("실험 1: 앙상블 그리드 서치 (기존 저장 모델 활용)")
@@ -157,16 +170,16 @@ dw_400.load_state_dict(torch.load(MOD/"DRAGWave_400ep_best.pt", weights_only=Tru
 dw_400.eval()
 
 with torch.no_grad():
-    p_norsr = torch.sigmoid(dw_norsr(data_boost)[test_mask]).numpy()
-    p_boost = torch.sigmoid(bw_boost(data_boost)[test_mask]).numpy()
-    p_400   = torch.sigmoid(dw_400(data_boost)[test_mask]).numpy()
+    p_norsr = torch.sigmoid(dw_norsr(data_boost_ind)[test_mask]).numpy()
+    p_boost = torch.sigmoid(bw_boost(data_boost_ind)[test_mask]).numpy()
+    p_400   = torch.sigmoid(dw_400(data_boost_ind)[test_mask]).numpy()
 
-print(f"\n  3종 모델 단독:")
+print(f"\n  3종 모델 단독 (인덕티브):")
 print(f"  DRAGWave_NoRSR: {round(average_precision_score(y_test,p_norsr),4)}")
 print(f"  BWGNN_boost:    {round(average_precision_score(y_test,p_boost),4)}")
 print(f"  DRAGWave_400ep: {round(average_precision_score(y_test,p_400),4)}")
 
-print(f"\n  그리드 서치 (NoRSR × w1 + BWGNN × w2 + DW400 × w3):")
+print(f"\n  그리드 서치 — 인덕티브 (NoRSR × w1 + BWGNN × w2 + DW400 × w3):")
 best_pr, best_combo = 0, None
 for w1 in [0.3, 0.4, 0.5, 0.6, 0.7]:
     for w2 in [0.1, 0.2, 0.3]:
@@ -178,12 +191,12 @@ for w1 in [0.3, 0.4, 0.5, 0.6, 0.7]:
         if pr > best_pr:
             best_pr = pr
             best_combo = (w1, w2, w3, pr, f1)
-            print(f"  NoRSR×{w1} + BWGNN×{w2} + DW400×{w3} → PR-AUC={pr:.4f} F1={f1:.4f} ← BEST")
+            print(f"  NoRSR×{w1} + BWGNN×{w2} + DW400×{w3} → 인덕티브 PR-AUC={pr:.4f} F1={f1:.4f} ← BEST")
 
 if best_combo:
     w1, w2, w3, pr, f1 = best_combo
-    print(f"\n  최적 3-way 앙상블: NoRSR×{w1} + BWGNN×{w2} + DW400×{w3}")
-    print(f"  PR-AUC={pr}  F1={f1}")
+    print(f"\n  최적 3-way 앙상블 (인덕티브): NoRSR×{w1} + BWGNN×{w2} + DW400×{w3}")
+    print(f"  인덕티브 PR-AUC={pr}  F1={f1}")
     results.append({"model":f"Ensemble_3way_NoRSR{w1}","pr_auc":pr,"macro_f1":f1,"gap":0,
                     "notes":f"NoRSR×{w1}+BWGNN×{w2}+DW400×{w3}"})
 
@@ -203,21 +216,14 @@ print(f"  피처 차원: {feat_tvf} (386+8=394)")
 
 m_tvf_norsr = HeteroDRAGWave(feat_tvf, ets=tvf_norsr_ets)
 r2 = train(m_tvf_norsr, "DRAGWave_TVF_NoRSR", data_tvf_norsr, tvf_norsr_ets, epochs=400)
-results.append(r2)
-
-# 인덕티브 평가
-def mask_ind(data,mask):
-    d2=copy.deepcopy(data)
-    for et,ei in data.edge_index_dict.items():
-        m=mask[ei[0]]&mask[ei[1]]; d2[et].edge_index=ei[:,m]
-        if hasattr(data[et],"edge_attr") and data[et].edge_attr is not None:
-            d2[et].edge_attr=data[et].edge_attr[m]
-    return d2
-
+# 인덕티브 평가 — 성능은 인덕티브 기준으로만 보고
 data_tvf_norsr_ind = mask_ind(data_tvf_norsr, data_tvf_norsr["review"].test_mask)
-_,(ind_pr,ind_f1) = (None, eval_model(m_tvf_norsr, data_tvf_norsr_ind, data_tvf_norsr["review"].test_mask))
+ind_pr, ind_f1 = eval_model(m_tvf_norsr, data_tvf_norsr_ind, data_tvf_norsr["review"].test_mask)
 print(f"  인덕티브: PR-AUC={ind_pr}  F1={ind_f1}")
+r2["pr_auc"] = ind_pr
+r2["macro_f1"] = ind_f1
 r2["inductive_pr"] = ind_pr
+results.append(r2)
 
 # ── 결과 저장 ─────────────────────────────────────────────────────────────────
 df = pd.read_csv(RES/"experiment_log.csv")
@@ -229,10 +235,8 @@ for r in results:
 df.to_csv(RES/"experiment_log.csv",index=False)
 
 print("\n" + "="*65)
-print("=== 성능 개선 실험 최종 결과 ===")
+print("=== 성능 개선 실험 최종 결과 (인덕티브 / 배포 환경 기준) ===")
 print("="*65)
-print(f"  기존 최고 앙상블: 0.9367")
 for r in results:
-    ind = f"  Inductive={r.get('inductive_pr','N/A')}" if r.get('inductive_pr') else ""
-    print(f"  {r['model']:40s} PR-AUC={r['pr_auc']:.4f}  F1={r['macro_f1']:.4f}{ind}")
+    print(f"  {r['model']:40s} 인덕티브 PR-AUC={r['pr_auc']:.4f}  F1={r['macro_f1']:.4f}")
 print(f"\n저장: experiment_log.csv ({len(df)}행)")
