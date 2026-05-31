@@ -143,10 +143,12 @@ YelpZip 데이터셋(약 60만 건 이상의 식당 리뷰)에서 밀도 중심 
 
 ## 최종 성능
 
+> 성능은 **인덕티브(배포 환경, Train→Test 엣지 완전 차단)** 기준으로 보고한다. Transductive 수치는 참고용이다.
+
 | 설정 | PR-AUC | Macro-F1 | 모델 |
 |------|--------|----------|------|
-| Transductive | **0.9419** | **0.9386** | 3-way Ensemble |
-| Inductive | **0.7748** | — | 4-way Ensemble (배포 환경 시뮬레이션) |
+| **Inductive (기준)** | **0.7748** | **0.8158** | 4-way Ensemble (배포 환경) |
+| Transductive (참고) | 0.9419 | 0.9386 | 3-way Ensemble |
 
 ---
 

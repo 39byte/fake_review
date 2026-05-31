@@ -188,9 +188,9 @@ with st.sidebar:
 
     # 핵심 지표 사이드바
     for lbl_s, val_s, clr_s in [
-        ("PR-AUC",   "0.9419", C["primary"]),
-        ("Macro F1", "0.9386", C["success"]),
-        ("인덕티브", "0.7748", C["purple"]),
+        ("PR-AUC",   "0.7748", C["primary"]),
+        ("Macro F1", "0.8158", C["success"]),
+        ("트랜스덕티브", "0.9419", C["purple"]),
     ]:
         st.markdown(f"""
         <div style='display:flex;justify-content:space-between;align-items:center;
@@ -215,9 +215,9 @@ if "개요" in page:
         <div class='top-sub'>YelpZip 608K 리뷰 · 5종 도메인 특화 엣지 · DRAGWave 융합 아키텍처 · itda 학술대회 본선</div>
       </div>
       <div style='display:flex;gap:28px;'>
-        <div class='top-stat'><div class='top-stat-val' style='color:{C["primary"]};'>0.9419</div><div class='top-stat-lbl'>PR-AUC</div></div>
-        <div class='top-stat'><div class='top-stat-val' style='color:{C["success"]};'>0.9386</div><div class='top-stat-lbl'>Macro F1</div></div>
-        <div class='top-stat'><div class='top-stat-val' style='color:{C["purple"]};'>0.7748</div><div class='top-stat-lbl'>인덕티브</div></div>
+        <div class='top-stat'><div class='top-stat-val' style='color:{C["primary"]};'>0.7748</div><div class='top-stat-lbl'>PR-AUC</div></div>
+        <div class='top-stat'><div class='top-stat-val' style='color:{C["success"]};'>0.8158</div><div class='top-stat-lbl'>Macro F1</div></div>
+        <div class='top-stat'><div class='top-stat-val' style='color:{C["purple"]};'>0.9419</div><div class='top-stat-lbl'>트랜스덕티브</div></div>
         <div class='top-stat'><div class='top-stat-val' style='color:{C["warn"]};'>91개</div><div class='top-stat-lbl'>캠페인 탐지</div></div>
       </div>
     </div>
@@ -226,9 +226,9 @@ if "개요" in page:
     # F-패턴: KPI 5개 (상단 전체폭)
     c1,c2,c3,c4,c5 = st.columns(5)
     kpis = [
-        (c1, "PR-AUC",      "0.9419", "+9.4%p vs 기준",  C["primary"],  "3-way Ensemble"),
-        (c2, "Macro F1",    "0.9386", "+9.9%p vs 기준",  C["success"],  "3-way Ensemble"),
-        (c3, "인덕티브",    "0.7748", "+18.7%p vs 기준", C["purple"],   "4-way Ensemble"),
+        (c1, "PR-AUC",      "0.7748", "인덕티브 기준",  C["primary"],  "4-way Ensemble"),
+        (c2, "Macro F1",    "0.8158", "인덕티브 기준",  C["success"],  "4-way Ensemble"),
+        (c3, "트랜스덕티브", "0.9419", "참고용",          C["purple"],   "3-way Ensemble"),
         (c4, "캠페인 탐지", "91개",   "1,584개 컴포넌트",C["warn"],     "R-Sim-R 클러스터"),
         (c5, "추론 속도",   "5.6ms",  "초당 179개 처리", C["teal"],     "CPU 기준"),
     ]
@@ -634,7 +634,7 @@ elif "모델" in page:
 
         st.markdown(f"""
         <div class='insight' style='--accent:{C["success"]};'>
-          ✅ <b>3-way Ensemble</b> PR-AUC 0.9419 / F1 0.9386 달성 (베이스라인 0.83 대비 +11.2%p) ·
+          ✅ <b>4-way Ensemble</b> 인덕티브 PR-AUC 0.7748 / F1 0.8158 달성 (배포 환경 기준) · 트랜스덕티브 3-way 0.9419 (참고) ·
           점선 = 목표 기준 0.85
         </div>""", unsafe_allow_html=True)
 
